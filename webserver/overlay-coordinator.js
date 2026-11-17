@@ -52,6 +52,34 @@
       }
     }
 
+    function applyConnectionStatus(status) {
+      var badge = document.getElementById('connectionBadge');
+      if (!badge) return;
+      status = status && typeof status === 'object' ? status : {};
+      var state = typeof status.status === 'string' ? status.status : 'disconnected';
+      var username = typeof status.username === 'string'
+        ? status.username.trim().replace(/^@/, '')
+        : '';
+      var className = state === 'connected'
+        ? 'connected'
+        : state === 'retrying' || state === 'connecting'
+          ? 'retrying'
+          : 'disconnected';
+      var labels = {
+        connected: 'Conectado',
+        connecting: 'Conectando',
+        disconnecting: 'Desconectando',
+        disconnected: 'Desconectado',
+        expired: 'Expirado',
+        retrying: 'Reintentando'
+      };
+      var label = labels[state] || 'Desconectado';
+      badge.textContent = username ? Array.from(username)[0].toLocaleUpperCase() : '?';
+      badge.className = 'connection-badge ' + className;
+      badge.title = (username ? '@' + username : 'TikTok') + ' · ' + label;
+      badge.setAttribute('aria-label', badge.title);
+    }
+
     function receive(message) {
       if (!message || typeof message !== 'object') return;
       if (message.type === 'snapshot') latestStateMessages.clear();
@@ -62,6 +90,7 @@
       layers.forEach(function (layer) { postMessage(layer, message); });
 
       if (message.type === 'snapshot') {
+        applyConnectionStatus(message.connectionStatus);
         currentDisplaySettings = message.state && message.state.displaySettings || {
           flags: true,
           donTortu: true,
@@ -73,6 +102,8 @@
       } else if (message.type === 'display_settings' && message.settings) {
         currentDisplaySettings = message.settings;
         applyDisplaySettings(currentDisplaySettings);
+      } else if (message.type === 'connection_status') {
+        applyConnectionStatus(message.status);
       }
     }
 

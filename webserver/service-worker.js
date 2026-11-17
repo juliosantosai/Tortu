@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tortulive-shell-v16';
+const CACHE_NAME = 'tortulive-shell-v17';
 const APP_SHELL = [
   '/',
   '/dashboard.html',

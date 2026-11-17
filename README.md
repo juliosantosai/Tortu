@@ -7,6 +7,12 @@ Requires Node.js 22.5 or newer (uses the built-in `node:sqlite` module).
 
 From the project root, run `npm start` for the combined web and API server, then open `http://localhost:8080/dashboard.html`.
 
+## Deploy on EasyPanel
+
+Create a service from this repository using the **Dockerfile** build method. The app listens on port `8080`; set the service's internal port to `8080` and attach a persistent volume at `/data`. The image stores SQLite at `/data/tortulive.sqlite` by default, so keep that volume when redeploying or restarting the service.
+
+Use the combined server (`npm start`) as one EasyPanel service. Enable HTTPS and set `COOKIE_SECURE=true` in the service environment. Run only one app instance because SQLite and the live event stream are local to that instance. Back up the `/data` volume regularly.
+
 ## Run as two independent services
 
 Start each command in its own terminal/process from the project root.

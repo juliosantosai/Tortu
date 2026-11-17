@@ -205,8 +205,24 @@ function publish(publicId, message) {
   for (const res of clients) writeSse(res, message);
 }
 
+function publicTikTokStatus(userId, status = getTikTokConnectionStatus(userId)) {
+  const selected = getSelectedTikTokAccount(userId);
+  return {
+    username: status?.username || selected?.username || null,
+    status: status?.status || 'disconnected'
+  };
+}
+
 const tiktokConnections = SERVER_ROLE === 'web' ? null : new TikTokConnectionManager({
   saveStatus: saveTikTokConnectionStatus,
+  onStatus: (userId, status) => {
+    const overlay = getOverlayForUser(userId);
+    if (!overlay) return;
+    publish(overlay.public_id, {
+      type: 'connection_status',
+      status: publicTikTokStatus(userId, status)
+    });
+  },
   onProfileUpdate: (account, avatarUrl) => {
     if (account.id) setTikTokAccountAvatar(account.userId || account.user_id, account.id, avatarUrl);
   },
@@ -254,6 +270,7 @@ function openStream(req, res, overlay) {
     version: 1,
     overlay: { id: overlay.public_id, name: overlay.name },
     state: getOverlayState(overlay.id),
+    connectionStatus: publicTikTokStatus(overlay.user_id),
     sequence: overlay.sequence
   });
 

@@ -337,6 +337,7 @@ test('TikTok connector events update public overlay counters and turtle progress
   const [snapshot] = await readSseMessages(streamReader, 1);
   assert.equal(snapshot.type, 'snapshot');
   assert.equal(snapshot.state.race.authority, 'server');
+  assert.deepEqual(snapshot.connectionStatus, { username: null, status: 'disconnected' });
   harness.eventSource.onmessage({ data: JSON.stringify(snapshot) });
   for (const layer of harness.layers) {
     assert.ok(layer.contentWindow.messages.some(({ message }) =>
