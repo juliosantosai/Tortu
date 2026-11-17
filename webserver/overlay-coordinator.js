@@ -32,7 +32,7 @@
       var layersBySetting = {
         flags: ['.bandera1', '.bandera2'],
         donTortu: ['.don'],
-        teamEvents: ['.contadores', '.eventos'],
+        teamEvents: ['.contadores', '.eventos', '.estadisticas'],
         honor: ['.agradecimiento'],
         progressBar: ['.progreso1', '.progreso2']
       };

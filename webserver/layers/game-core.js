@@ -152,6 +152,13 @@
     if (mt != null) raiseProgress(i, mt / GOAL);                    // la API manda METROS (0..maxMeters)
     var cups = num(pick(src, ['cups', 'copas', 'wins', 'victorias', 'trophies', 'trofeos']));
     if (cups != null) { t.cups = Math.max(0, cups | 0); var c = readCups(); c[i] = t.cups; writeCups(c); }
+    var eventCounts = pick(src, ['eventCounts']);
+    if (eventCounts && typeof eventCounts === 'object') {
+      KINDS.forEach(function (kind) {
+        var count = Number(eventCounts[kind]);
+        totals[i][kind] = Number.isSafeInteger(count) && count >= 0 ? count : 0;
+      });
+    }
   }
 
   function applyState(s) {
@@ -173,6 +180,7 @@
     var w = pick(s, ['winner', 'ganador', 'winnerTeam']);
     if (w == null && race && race.winnerTeam != null) w = race.winnerTeam;          // snapshot de la API: race.winnerTeam "1"|"2"|null
     if (w != null) { var wi = teamIndex(w); if (wi > -1 || !(meters[0] >= GOAL || meters[1] >= GOAL)) state.winner = wi; }
+    notifyStats();
   }
 
   function teamIndex(v) {

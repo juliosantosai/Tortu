@@ -65,7 +65,8 @@
       override = true;
       setRider(message.user, message.avatar);
       racer.classList.add('go', 'riding', 'giant');
-      racer.style.transition = '--p 2.6s cubic-bezier(.45,.05,.3,1), --sc .7s cubic-bezier(.2,1.8,.4,1)';
+      var duration = Number.isFinite(message.duration) ? Math.max(100, Math.min(5000, message.duration)) : 2600;
+      racer.style.transition = '--p ' + duration + 'ms cubic-bezier(.45,.05,.3,1), --sc .7s cubic-bezier(.2,1.8,.4,1)';
       racer.style.setProperty('--p', message.pEnd);
     } else if (message.fx === 'arrive') {
       racer.classList.remove('go');
@@ -81,7 +82,7 @@
         racer.classList.remove('go', 'giant');
         racer.style.transition = '';
         racer.style.setProperty('--p', realProgress);
-      }, 1700);
+      }, message.quick ? 100 : 1700);
     }
   });
 })();

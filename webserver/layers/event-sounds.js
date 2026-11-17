@@ -13,8 +13,8 @@
   var voiceEnabled = true;
   var lastPlayedAt = 0;
   var MAX_SOUND_RATE_MS = 90;
-  var NORMAL_GAIN = 0.55;
-  var DUCKED_GAIN = 0.2;
+  var NORMAL_GAIN = 0.75;
+  var DUCKED_GAIN = 0.16;
 
   // ---- Gamificación ----
   var XP_PER_EVENT = { comment: 1, like: 1, share: 5, follow: 10, join: 2, gift: 20 };
@@ -30,6 +30,7 @@
   var voice = null;
   var queue = [];
   var speaking = false;
+  var speechGuard = null;
   var MAX_QUEUE = 8;
   var MAX_COMMENT_CHARS = 160;
   var FEMALE_RE = /female|mujer|helena|sabina|paulina|monica|laura|elena|lucia|mia\b|sofia|paloma|dalia|elvira|salome|camila|valentina|marisol|elsa|catalina|renata|google espa/i;
@@ -59,28 +60,31 @@
 
   function baseTones(kind, amount) {
     if (kind === 'comment') {
-      startTone(620, 0, 0.11, 0.12);
+      startTone(620, 0, 0.13, 0.2);
+      startTone(880, 0.055, 0.1, 0.1, null, 'sine');
     } else if (kind === 'join') {
-      startTone(392, 0, 0.13, 0.1);
-      startTone(523, 0.09, 0.13, 0.1);
-      startTone(659, 0.18, 0.18, 0.11);
+      startTone(392, 0, 0.15, 0.16);
+      startTone(523, 0.09, 0.15, 0.16);
+      startTone(659, 0.18, 0.2, 0.18);
     } else if (kind === 'share') {
-      startTone(520, 0, 0.2, 0.1, 880);
-      startTone(784, 0.16, 0.12, 0.08);
+      startTone(520, 0, 0.22, 0.18, 880);
+      startTone(784, 0.16, 0.15, 0.14);
     } else if (kind === 'follow') {
-      startTone(659, 0, 0.12, 0.09);
-      startTone(880, 0.08, 0.12, 0.09);
-      startTone(1175, 0.16, 0.17, 0.1);
+      startTone(659, 0, 0.14, 0.15);
+      startTone(880, 0.08, 0.14, 0.15);
+      startTone(1175, 0.16, 0.19, 0.17);
     } else if (kind === 'like') {
       var pitch = 480 + Math.min(amount, 100) * 3;
-      startTone(pitch, 0, 0.1, 0.09);
-      if (amount >= 15) startTone(pitch * 1.25, 0.07, 0.13, 0.08);
-      if (amount >= 50) startTone(pitch * 1.5, 0.14, 0.16, 0.08);
+      startTone(pitch, 0, 0.12, 0.15);
+      if (amount >= 15) startTone(pitch * 1.25, 0.07, 0.15, 0.13);
+      if (amount >= 50) startTone(pitch * 1.5, 0.14, 0.18, 0.13);
     } else if (kind === 'gift') {
-      startTone(523, 0, 0.17, 0.1);
-      startTone(659, 0.1, 0.17, 0.1);
-      startTone(784, 0.2, 0.2, 0.11);
-      if (amount >= 5) startTone(1047, 0.3, 0.22, 0.1);
+      startTone(196, 0, 0.28, 0.16, 82, 'sine');
+      startTone(523, 0.04, 0.19, 0.18);
+      startTone(659, 0.14, 0.19, 0.18);
+      startTone(784, 0.24, 0.23, 0.2);
+      startTone(1175, 0.3, 0.28, 0.12, null, 'sine');
+      if (amount >= 5) startTone(1568, 0.38, 0.24, 0.18);
     }
   }
 
@@ -168,11 +172,13 @@
   function refreshVoice() {
     if (!synth) return;
     var best = null, bestScore = -Infinity;
-    (synth.getVoices() || []).forEach(function (v) {
+    var voices = synth.getVoices() || [];
+    voices.forEach(function (v) {
       var s = scoreVoice(v);
       if (s > bestScore) { best = v; bestScore = s; }
     });
-    voice = bestScore > -100 ? best : null;
+    voice = bestScore > -100 ? best
+      : voices.find(function (v) { return v.default; }) || voices[0] || null;
   }
 
   if (synth) {
@@ -200,7 +206,7 @@
     if (speaking || !queue.length || !synth) return;
     var item = queue.shift();
     var utterance = new SpeechSynthesisUtterance(item.text);
-    if (voice) { utterance.voice = voice; utterance.lang = voice.lang; } else { utterance.lang = 'es-419'; }
+    if (voice) { utterance.voice = voice; utterance.lang = voice.lang || 'es-MX'; } else { utterance.lang = 'es-MX'; }
     utterance.pitch = 1.25;                                              // tono agudo y alegre
     utterance.rate = Math.min(1.5, (item.priority ? 1.05 : 1.08) + queue.length * 0.08); // acelera si hay cola
     utterance.volume = 1;
@@ -209,6 +215,7 @@
       if (finished) return;
       finished = true;
       clearTimeout(guard);
+      if (speechGuard === guard) speechGuard = null;
       speaking = false;
       duck(queue.length > 0);
       pump();
@@ -216,13 +223,17 @@
     utterance.onend = done;
     utterance.onerror = done;
     guard = setTimeout(function () { try { synth.cancel(); } catch (e) { /* nada */ } done(); }, 12000);
+    speechGuard = guard;
     speaking = true;
     duck(true);
-    try { synth.speak(utterance); } catch (e) { done(); }
+    try {
+      if (typeof synth.resume === 'function') synth.resume();
+      synth.speak(utterance);
+    } catch (e) { done(); }
   }
 
   function say(text, priority) {
-    if (!synth || !enabled || !voiceEnabled || !text) return;
+    if (!synth || !voiceEnabled || !text) return;
     var item = { text: text, priority: !!priority };
     if (priority) {
       var i = 0; while (i < queue.length && queue[i].priority) i++;
@@ -232,6 +243,85 @@
       queue.push(item);
     }
     pump();
+  }
+
+  function unlockVoice() {
+    if (!synth) return false;
+    refreshVoice();
+    if (typeof synth.resume !== 'function') { pump(); return true; }
+    try {
+      var resumed = synth.resume();
+      if (resumed && typeof resumed.then === 'function') {
+        resumed.then(function () { refreshVoice(); pump(); }, function (error) {
+          console.warn('No se pudo activar la voz en off:', error);
+        });
+      } else {
+        pump();
+      }
+    } catch (error) {
+      console.warn('No se pudo activar la voz en off:', error);
+      return false;
+    }
+    return true;
+  }
+
+  function testVoice() {
+    if (!synth) return Promise.reject(new Error('Este navegador no tiene síntesis de voz.'));
+    voiceEnabled = true;
+    queue = [];
+    if (speechGuard) clearTimeout(speechGuard);
+    speechGuard = null;
+    try { synth.cancel(); } catch (error) {
+      return Promise.reject(new Error('No se pudo reiniciar la síntesis de voz: ' + error.message));
+    }
+    speaking = false;
+    refreshVoice();
+    return new Promise(function (resolve, reject) {
+      var utterance;
+      try {
+        utterance = new SpeechSynthesisUtterance('Prueba de voz. La voz en off está activa.');
+      } catch (error) {
+        reject(new Error('No se pudo crear la prueba de voz: ' + error.message));
+        return;
+      }
+      if (voice) { utterance.voice = voice; utterance.lang = voice.lang || 'es-MX'; }
+      else utterance.lang = 'es-MX';
+      utterance.pitch = 1;
+      utterance.rate = 0.95;
+      utterance.volume = 1;
+      var finished = false, guard;
+      function finish(error) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(guard);
+        if (speechGuard === guard) speechGuard = null;
+        speaking = false;
+        duck(false);
+        if (error) reject(error); else resolve(true);
+      }
+      utterance.onend = function () { finish(); };
+      utterance.onerror = function (event) {
+        finish(new Error('El navegador no pudo reproducir la voz: ' + (event.error || 'error desconocido')));
+      };
+      guard = setTimeout(function () {
+        try { synth.cancel(); } catch (error) { console.warn('No se pudo detener la prueba de voz:', error); }
+        finish(new Error('El navegador no confirmó la reproducción de la voz.'));
+      }, 8000);
+      speechGuard = guard;
+      speaking = true;
+      duck(true);
+      try {
+        if (typeof synth.resume === 'function') synth.resume();
+        synth.speak(utterance);
+      } catch (error) {
+        finish(new Error('No se pudo iniciar la voz: ' + error.message));
+      }
+    });
+  }
+
+  if (synth && typeof window.addEventListener === 'function') {
+    window.addEventListener('pointerdown', unlockVoice, { once: true });
+    window.addEventListener('keydown', unlockVoice, { once: true });
   }
 
   // Formato: "<apodo de TikTok>, del equipo <equipo>, dice: <comentario>".
@@ -255,7 +345,7 @@
     }
     return context.resume().then(function () {
       enabled = true;
-      refreshVoice();
+      unlockVoice();
       notify();
       return true;
     });
@@ -276,13 +366,14 @@
       queue = [];
       if (synth) { try { synth.cancel(); } catch (e) { /* nada */ } }
       duck(false);
-    }
+    } else unlockVoice();
     return voiceEnabled;
   }
 
   function play(kind, count, meta) {
-    if (!enabled || !context || context.state !== 'running') return;
     meta = meta || {};
+    if (kind === 'comment' && meta.text) speakComment(meta.user, meta.team, meta.text);
+    if (!enabled || !context || context.state !== 'running') return;
     var amount = Math.max(1, Number(count) || 1);
     var result = gamify(kind, amount, meta);
     var now = Date.now();
@@ -296,8 +387,6 @@
       else if (result.userMilestone) milestoneSparkle();
     }
 
-    // La voz solo lee comentarios; los logros (nivel, combo, hitos) suenan sin hablar.
-    if (kind === 'comment' && meta.text) speakComment(meta.user, meta.team, meta.text);
   }
 
   window.TortuSound = {
@@ -305,6 +394,8 @@
     disable: disable,
     play: play,
     setVoice: setVoice,
+    unlockVoice: unlockVoice,
+    testVoice: testVoice,
     isEnabled: function () { return enabled; },
     isVoiceEnabled: function () { return voiceEnabled; },
     hasVoice: function () { return !!synth; },

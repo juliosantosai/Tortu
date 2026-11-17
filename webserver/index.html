@@ -75,6 +75,7 @@
     .progreso2 { z-index: 5; }
     .bandera1 { z-index: 6; }
     .bandera2 { z-index: 7; }
+    .estadisticas { z-index: 10; }
     .tortuga1 { z-index: 8; }
     .tortuga2 { z-index: 9; }
     .eventos { z-index: 10; }
@@ -131,6 +132,7 @@
     }
     .sound-toggle[aria-pressed="true"] { color: #f7c948; }
     .voice-toggle { right: 146px; min-width: 96px; }
+    .voice-test { right: 250px; width: 44px; min-width: 44px; padding: 0; }
     .sound-hud {
       position: absolute; right: 20px; bottom: 70px; z-index: 23; display: none; min-width: 222px; box-sizing: border-box;
       padding: 6px 12px 8px; border: 1px solid #c99b3b; border-radius: 14px; background: rgba(33,19,8,.95);
@@ -154,6 +156,7 @@
     <iframe class="layer progreso2" src="/layers/progreso-2.html"></iframe>
     <iframe class="layer bandera1" src="/layers/bandera-1.html"></iframe>
     <iframe class="layer bandera2" src="/layers/bandera-2.html"></iframe>
+    <iframe class="layer estadisticas" src="/layers/estadisticas-equipos.html"></iframe>
     <iframe class="layer tortuga1" src="/layers/tortuga-1.html"></iframe>
     <iframe class="layer tortuga2" src="/layers/tortuga-2.html"></iframe>
     <iframe class="layer eventos" src="/layers/eventos-ruta.html"></iframe>
@@ -171,6 +174,7 @@
     <button class="gift-zone" type="button" aria-label="Probar regalo"></button>
     <button class="session-zone" type="button" aria-label="Cerrar sesión" title="Cerrar sesión"></button>
     <button id="voiceToggle" class="sound-toggle voice-toggle" type="button" aria-pressed="true" title="Silenciar la voz">🎙️ Voz</button>
+    <button id="voiceTest" class="sound-toggle voice-test" type="button" aria-label="Probar la voz en off" title="Probar la voz en off">🧪</button>
     <button id="soundToggle" class="sound-toggle" type="button" aria-pressed="false" title="Activar sonidos">🔇 Sonido</button>
     <div id="soundHud" class="sound-hud" aria-hidden="true">
       <div class="row"><span id="hudLevel">Nivel 1</span><span id="hudCombo" class="combo"></span></div>
@@ -230,6 +234,25 @@
       voiceToggle.setAttribute('aria-pressed', String(on));
       voiceToggle.textContent = on ? '🎙️ Voz' : '🔕 Voz';
       voiceToggle.title = on ? 'Silenciar la voz' : 'Activar la voz';
+    });
+    const voiceTest = document.getElementById('voiceTest');
+    voiceTest.addEventListener('click', async event => {
+      event.preventDefault();
+      event.stopPropagation();
+      voiceTest.disabled = true;
+      voiceTest.title = 'Reproduciendo la prueba de voz...';
+      try {
+        await window.TortuSound.testVoice();
+        voiceToggle.setAttribute('aria-pressed', 'true');
+        voiceToggle.textContent = '🎙️ Voz';
+        voiceToggle.title = 'Silenciar la voz';
+        voiceTest.title = 'La prueba de voz terminó correctamente';
+      } catch (error) {
+        voiceTest.title = error.message;
+        console.error('Falló la prueba de voz:', error);
+      } finally {
+        voiceTest.disabled = false;
+      }
     });
 
     window.TortuSound.onChange(stats => {

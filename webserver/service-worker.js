@@ -1,4 +1,4 @@
-const CACHE_NAME = 'tortulive-shell-v12';
+const CACHE_NAME = 'tortulive-shell-v16';
 const APP_SHELL = [
   '/',
   '/dashboard.html',
@@ -20,6 +20,7 @@ const APP_SHELL = [
   '/layers/pista.html',
   '/layers/ruta.html',
   '/layers/meta.html',
+  '/layers/estadisticas-equipos.html',
   '/layers/progreso-1.html',
   '/layers/progreso-2.html',
   '/layers/bandera-1.html',

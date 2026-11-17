@@ -8,6 +8,7 @@ fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
 const db = new DatabaseSync(databasePath);
 const DEFAULT_SPEED = { comment: 1, like: 1, likeTaps: 15, share: 3, follow: 10 };
+const RACE_RESULT_DISPLAY_MS = 3_000;
 db.exec(`
   PRAGMA foreign_keys = ON;
   PRAGMA journal_mode = WAL;
@@ -659,6 +660,20 @@ function advanceIdleRaces(now = Date.now(), random = Math.random) {
   for (const overlay of statements.listOverlayStates.all()) {
     const state = normalizeOverlayState(JSON.parse(overlay.state_json));
     const race = state.race;
+    if (race.status === 'finished') {
+      const finishedAt = Date.parse(race.finishedAt);
+      if (Number.isFinite(finishedAt) && now - finishedAt < RACE_RESULT_DISPLAY_MS) continue;
+
+      resetRaceState(state);
+      statements.updateOverlayState.run(JSON.stringify(state), new Date(now).toISOString(), overlay.id);
+      updates.push({
+        publicId: overlay.public_id,
+        sequence: overlay.sequence,
+        state: publicOverlayState(JSON.stringify(state)),
+        raceReset: true
+      });
+      continue;
+    }
     if (race.status !== 'running') continue;
 
     let lastActivity = Date.parse(race.lastActivityAt);

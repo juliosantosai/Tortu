@@ -167,6 +167,14 @@ function createOverlayLayerHarness(layerName) {
   }));
   const wrap = { style };
   const count = { textContent: '' };
+  const winnerName = { textContent: '' };
+  let winnerVisible = false;
+  const banner = {
+    classList: {
+      toggle(_className, enabled) { winnerVisible = enabled; }
+    }
+  };
+  const crown = { style: {} };
   const racer = {
     style,
     classList: {
@@ -190,12 +198,15 @@ function createOverlayLayerHarness(layerName) {
       if (id === 'racer') return racer;
       if (id === 'stats-0') return statsContainers[0];
       if (id === 'stats-1') return statsContainers[1];
+      if (id === 'winner-banner') return banner;
+      if (id === 'winner-name') return winnerName;
       return null;
     },
     querySelector(selector) {
       if (selector === '.wrap') return wrap;
       if (selector === '.count') return count;
       if (selector === '.honor') return { style: {} };
+      if (selector === '.crown') return crown;
       return null;
     },
     querySelectorAll(selector) { return selector === '.stats' ? statsContainers : []; }
@@ -221,11 +232,14 @@ function createOverlayLayerHarness(layerName) {
   sandbox.top = sandbox.parent;
   const layersDir = path.join(__dirname, '..', 'webserver', 'layers');
   vm.runInNewContext(fs.readFileSync(path.join(layersDir, 'game-core.js'), 'utf8'), sandbox);
-  if (layerName === 'meta') {
-    const html = fs.readFileSync(path.join(layersDir, 'meta.html'), 'utf8');
+  if (layerName === 'stats' || layerName === 'winner') {
+    const html = fs.readFileSync(
+      path.join(layersDir, layerName === 'stats' ? 'estadisticas-equipos.html' : 'ganador.html'),
+      'utf8'
+    );
     const inlineScripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
       .map(([, script]) => script.trim()).filter(Boolean);
-    assert.ok(inlineScripts.length, 'meta layer should contain its counter renderer');
+    assert.ok(inlineScripts.length, 'layer should contain its renderer');
     vm.runInNewContext(inlineScripts[0], sandbox);
     statsContainers.forEach((container, team) => {
       container.children.forEach((chip, index) => {
@@ -239,6 +253,8 @@ function createOverlayLayerHarness(layerName) {
   }
   return {
     counters: counterValues[0],
+    get winnerName() { return winnerName.textContent; },
+    get winnerVisible() { return winnerVisible; },
     dispatch(message, origin) {
       (listeners.message || []).forEach(callback => callback({ data: message, origin }));
     },
@@ -299,18 +315,20 @@ test('TikTok connector events update public overlay counters and turtle progress
   const overlayHtml = await overlayResponse.text();
   const coordinatorScript = fs.readFileSync(path.join(__dirname, '..', 'webserver', 'overlay-coordinator.js'), 'utf8');
   const harness = createOverlayHarness(overlayHtml, coordinatorScript, registration.overlay.publicId);
-  const metaLayer = createOverlayLayerHarness('meta');
+  const statsLayer = createOverlayLayerHarness('stats');
   const progressLayer = createOverlayLayerHarness('progress1');
   const turtleLayer = createOverlayLayerHarness('turtle1');
+  const winnerLayer = createOverlayLayerHarness('winner');
   for (const [className, layerHarness] of [
-    ['meta', metaLayer],
+    ['estadisticas', statsLayer],
     ['progreso1', progressLayer],
-    ['tortuga1', turtleLayer]
+    ['tortuga1', turtleLayer],
+    ['ganador', winnerLayer]
   ]) {
     harness.layers.find(layer => layer.className === className).contentWindow.receiver =
       (message, origin) => layerHarness.dispatch(message, origin);
   }
-  assert.equal(harness.layers.length, 18);
+  assert.equal(harness.layers.length, 19);
   assert.equal(harness.eventSource.url, `/api/public/${registration.overlay.publicId}/stream`);
 
   const streamResponse = await fetch(`${baseUrl}${harness.eventSource.url}`);
@@ -325,7 +343,7 @@ test('TikTok connector events update public overlay counters and turtle progress
       message.message?.type === 'snapshot' &&
       message.message?.state?.race?.authority === 'server'));
   }
-  for (const className of ['bandera1', 'bandera2', 'don', 'contadores', 'eventos',
+  for (const className of ['bandera1', 'bandera2', 'estadisticas', 'don', 'contadores', 'eventos',
     'agradecimiento', 'progreso1', 'progreso2']) {
     assert.equal(harness.layers.find(layer => layer.className === className).style.display, 'block');
   }
@@ -349,7 +367,7 @@ test('TikTok connector events update public overlay counters and turtle progress
   for (const [setting, classNames] of Object.entries({
     flags: ['bandera1', 'bandera2'],
     donTortu: ['don'],
-    teamEvents: ['contadores', 'eventos'],
+    teamEvents: ['contadores', 'eventos', 'estadisticas'],
     honor: ['agradecimiento'],
     progressBar: ['progreso1', 'progreso2']
   })) {
@@ -392,7 +410,6 @@ test('TikTok connector events update public overlay counters and turtle progress
   });
   const [eventMessage, raceMessage] = await readSseMessages(streamReader, 2);
   while (!ingestResult) await new Promise(setImmediate);
-  await connectorManager.stopAll();
   assert.equal(ingestResult.status, 202);
   assert.equal(ingestResult.body.accepted, true);
   assert.equal(eventMessage.type, 'event');
@@ -405,10 +422,11 @@ test('TikTok connector events update public overlay counters and turtle progress
   assert.equal(raceMessage.state.teams['1'].meters, 1);
   harness.eventSource.onmessage({ data: JSON.stringify(eventMessage) });
   harness.eventSource.onmessage({ data: JSON.stringify(raceMessage) });
-  assert.equal(metaLayer.counters.comment.textContent, '1');
+  assert.equal(statsLayer.counters.comment.textContent, '1');
   assert.equal(progressLayer.count.textContent, '1/100');
   assert.equal(progressLayer.progressStyle.values['--pct'], '1.0%');
   assert.equal(turtleLayer.racerStyle.values['--p'], 0.01);
+  assert.equal(winnerLayer.winnerVisible, false);
 
   const lateLayer = harness.layers.find(layer => layer.className === 'tortuga1');
   lateLayer.listeners.load();
@@ -416,15 +434,67 @@ test('TikTok connector events update public overlay counters and turtle progress
   assert.ok(lateMessages.includes('snapshot'), 'late layers receive the latest snapshot');
   assert.ok(lateMessages.includes('race'), 'late layers receive the latest race state');
 
+  ingestResult = null;
+  connectorEvent.emit('gift', {
+    user: {
+      nickname: 'Ana',
+      uniqueId: 'ana123'
+    },
+    giftDetails: { giftName: 'Rosa', giftType: 0 },
+    repeatCount: 1,
+    repeatEnd: true,
+    common: { msgId: 'integration-gift-1' }
+  });
+  const [giftMessage, finishedRaceMessage] = await readSseMessages(streamReader, 2);
+  while (!ingestResult) await new Promise(setImmediate);
+  assert.equal(ingestResult.status, 202);
+  assert.equal(giftMessage.event, 'gift');
+  assert.equal(finishedRaceMessage.state.race.status, 'finished');
+  assert.equal(finishedRaceMessage.state.race.winnerTeam, '1');
+  assert.equal(finishedRaceMessage.state.teams['1'].meters, 100);
+  harness.eventSource.onmessage({ data: JSON.stringify(giftMessage) });
+  harness.eventSource.onmessage({ data: JSON.stringify(finishedRaceMessage) });
+  assert.equal(statsLayer.counters.gift.textContent, '1');
+  assert.equal(progressLayer.count.textContent, '100/100');
+  assert.equal(turtleLayer.racerStyle.values['--p'], 1);
+  assert.equal(winnerLayer.winnerVisible, true);
+  assert.equal(winnerLayer.winnerName, 'OLIMPIA');
+  const lateStatsLayer = createOverlayLayerHarness('stats');
+  lateStatsLayer.dispatch({
+    channel: 'tortulive',
+    message: { type: 'snapshot', state: finishedRaceMessage.state }
+  }, 'http://localhost');
+  assert.equal(lateStatsLayer.counters.comment.textContent, '1');
+  assert.equal(lateStatsLayer.counters.gift.textContent, '1');
+  const finishedAt = Date.now();
+  await connectorManager.stopAll();
+
+  const [countersResetMessage, resetRaceMessage] = await readSseMessages(streamReader, 2);
+  assert.ok(Date.now() - finishedAt >= 2_500, 'winner should remain visible for about three seconds');
+  assert.equal(countersResetMessage.type, 'counters_reset');
+  assert.equal(resetRaceMessage.type, 'race');
+  assert.equal(resetRaceMessage.state.race.status, 'idle');
+  assert.equal(resetRaceMessage.state.race.winnerTeam, null);
+  assert.equal(resetRaceMessage.state.teams['1'].meters, 0);
+  assert.equal(resetRaceMessage.state.teams['1'].cups, 1);
+  harness.eventSource.onmessage({ data: JSON.stringify(countersResetMessage) });
+  harness.eventSource.onmessage({ data: JSON.stringify(resetRaceMessage) });
+  assert.equal(winnerLayer.winnerVisible, false);
+  assert.equal(statsLayer.counters.comment.textContent, '0');
+  assert.equal(statsLayer.counters.gift.textContent, '0');
+  assert.equal(progressLayer.count.textContent, '0/100');
+  assert.equal(turtleLayer.racerStyle.values['--p'], 0);
+
   const historyResponse = await fetch(
     `${baseUrl}/api/overlays/${registration.overlay.id}/events?limit=10`,
     { headers: { Cookie: cookie } }
   );
   assert.equal(historyResponse.status, 200);
   const history = await historyResponse.json();
-  assert.equal(history.events.length, 1);
-  assert.equal(history.events[0].message, 'Vamos Olimpia');
-  assert.equal(history.events[0].sequence, eventMessage.sequence);
+  assert.equal(history.events.length, 2);
+  const commentHistoryEvent = history.events.find(event => event.event === 'comment');
+  assert.equal(commentHistoryEvent.message, 'Vamos Olimpia');
+  assert.equal(commentHistoryEvent.sequence, eventMessage.sequence);
 
   for (const layer of harness.layers) {
     const delivered = layer.contentWindow.messages.map(entry => entry.message.message?.type);
@@ -435,7 +505,9 @@ test('TikTok connector events update public overlay counters and turtle progress
   }
   assert.ok(harness.layers.find(layer => layer.className === 'eventos')
     .contentWindow.messages.some(entry => entry.message.message?.event === 'comment'));
-  for (const className of ['tortuga1', 'pista', 'meta', 'progreso1', 'ganador']) {
+  assert.ok(harness.layers.find(layer => layer.className === 'eventos')
+    .contentWindow.messages.some(entry => entry.message.message?.event === 'gift'));
+  for (const className of ['tortuga1', 'pista', 'estadisticas', 'progreso1', 'ganador']) {
     assert.ok(harness.layers.find(layer => layer.className === className)
       .contentWindow.messages.some(entry => entry.message.message?.type === 'race'));
   }

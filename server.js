@@ -945,6 +945,9 @@ const server = http.createServer(async (req, res) => {
 const idleRaceTimer = SERVER_ROLE === 'web' ? null : setInterval(() => {
   try {
     for (const update of advanceIdleRaces()) {
+      if (update.raceReset) {
+        publish(update.publicId, { type: 'counters_reset' });
+      }
       publish(update.publicId, {
         type: 'race',
         version: 1,

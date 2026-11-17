@@ -207,6 +207,43 @@ test('race events persist server authority, team switches, speed, and winner sta
   `);
 });
 
+test('finished race shows its winner for three seconds then resets for the next race', () => {
+  withIsolatedDatabase('tortulive-race-auto-reset-', `
+    const assert = require('node:assert/strict');
+    const db = require('./api/database');
+    const user = db.createUser('auto-race-test@example.test', 'salt', 'hash');
+    const overlay = db.createOverlay(user.id, 'Auto reset race', 'hash');
+    const finish = db.logEvent(overlay.id, {
+      type: 'event', event: 'gift', user: 'Winner', username: 'winner', count: 1
+    });
+    const finishAt = Date.parse(finish.state.race.finishedAt);
+    const winnerTeam = finish.state.race.winnerTeam;
+    assert.equal(finish.state.race.status, 'finished');
+    assert.ok(winnerTeam);
+
+    assert.deepEqual(db.advanceIdleRaces(finishAt + 2_999), []);
+    let state = db.getOverlayState(overlay.id);
+    assert.equal(state.race.status, 'finished');
+    assert.equal(state.race.winnerTeam, winnerTeam);
+
+    const [reset] = db.advanceIdleRaces(finishAt + 3_000);
+    assert.equal(reset.raceReset, true);
+    assert.equal(reset.state.race.status, 'idle');
+    assert.equal(reset.state.race.winnerTeam, null);
+    assert.equal(reset.state.teams[winnerTeam].meters, 0);
+    assert.equal(reset.state.teams[winnerTeam].events, 0);
+    assert.equal(reset.state.teams[winnerTeam].cups, 1);
+
+    const next = db.logEvent(overlay.id, {
+      type: 'event', event: 'comment', user: 'Next viewer', username: 'next-viewer',
+      message: 'Comienza otra'
+    });
+    assert.equal(next.state.race.status, 'running');
+    assert.equal(next.state.race.winnerTeam, null);
+    assert.equal(next.state.teams[next.payload.teamId].meters, 1);
+  `);
+});
+
 test('race inactivity resets its countdown, advances after ten seconds, and times out without a winner', () => {
   withIsolatedDatabase('tortulive-idle-race-', `
     const assert = require('node:assert/strict');
